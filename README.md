@@ -1,19 +1,20 @@
-# job-queue is a simple thread manager that I wrote to play with lisp.
-# I love playing with this.
-
-# If you want to try it
-
-# First load job-queue.
+# job-queue
+;;; job-queue is a simple thread manager that I wrote to play with lisp.
+;;; I love playing with this.
+;;;
+;;; To try it
+;;;
+;;; First load job-queue.
 
 (load "job-queue.lisp")
 
-# Then start the job runner
+;; Then start the job runner
 
 (job-queue:start-job-runner)
 
-# The runner will wait until a job is added to the queue.
+;; The runner will wait until a job is added to the queue.
 
-# Lets declare some code to run.
+;; Lets declare some code to run.
 (defun divisible-by (number divisor)
   (= (mod number divisor) 0))
 
@@ -29,8 +30,8 @@
 (defun callback-fn (job)
   (format t "job: ~a, retval: ~a~%" job (slot-value job 'job-queue:job-retval)))
 
-# Then add a new job.
+;; Then add a new job.
 (job-queue:add-job-to-queue (count-primes 1 2999999) "1 to 2999999" #'callback-fn)
 
-# You can add as many that you want, the runner will start a new thread for each of them.
+;; You can add as many that you want, the runner will start a new thread for each of them.
 (job-queue:add-job-to-queue (count-primes  3000000 6999999) "3000000 to 6999999" #'callback-fn)
