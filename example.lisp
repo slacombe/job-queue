@@ -1,9 +1,3 @@
-# job-queue
-;;; job-queue is a simple thread manager that I wrote to play with lisp.
-;;; I love playing with this.
-;;;
-;;; To try it
-;;;
 ;;; First load job-queue.
 
 (load "job-queue.lisp")
