@@ -1,6 +1,6 @@
 (defpackage :job-queue
   (:use "CL" "SB-THREAD" "SB-EXT")
-  (:export :print-object :list-running-jobs
+  (:export :print-object :list-running-jobs :job-retval
 	   :add-to-queue :add-job-to-queue :remove-from-queue :list-jobs
 	   :start-job-runner :stop-job-runner
 	   :notify-queue))
@@ -19,18 +19,24 @@
   ((job-name :initarg :name)
    (job-fn :initarg :job-fn)
    (job-thread)
-   (job-retval)))
+   (job-retval)
+   (job-callback-fn :initarg :callback-fn)))
 
-(defun create-job (name job-fn)
-  (make-instance 'job :name name :job-fn job-fn))
+(defun create-job (name job-fn callback-fn)
+  (make-instance 'job :name name :job-fn job-fn :callback-fn callback-fn))
 
 (defmethod start-job ((job job))
   (let* ((job-fn (slot-value job 'job-fn))
+	 (callback-fn (slot-value job 'job-callback-fn))
 	 (new-thread
 	  (make-thread  #'(lambda ()
-			    (funcall job-fn)
-			    (remove-running-job job)
-			    (format t "job finish: ~a~%" job)))))
+			    (let ((retval (funcall job-fn)))
+			      (setf (slot-value job 'job-retval) retval)
+			      (remove-running-job job)
+			      (format t "job finish: ~a - retval = ~a~%"
+				      job
+				      (slot-value job 'job-retval))
+			      (funcall callback-fn job))))))
       (setf (slot-value job 'job-thread) new-thread)
       (add-running-job job)))
 
@@ -39,14 +45,15 @@
     (with-slots (job-name) object
       (format stream "name: ~s" job-name))))
 
-(defun add-to-queue (job-fn name)
+(defun add-to-queue (job-fn name callback-fn)
   (with-mutex (*job-queue-mutex*)
-    (let ((new-job (create-job name job-fn)))
+    (let ((new-job (create-job name job-fn callback-fn)))
       (setf *job-queue* (append *job-queue* (list new-job)))
-      (condition-notify *job-queue-wait*))))
+      (condition-notify *job-queue-wait*)
+      new-job)))
 
-(defmacro add-job-to-queue (job-fn name)
-  `(add-to-queue #'(lambda () (,@job-fn)) ,name))
+(defmacro add-job-to-queue (job-fn name callback-fn)
+  `(add-to-queue #'(lambda () (,@job-fn)) ,name ,callback-fn))
 
 (defun remove-from-queue ()
   (with-mutex (*job-queue-mutex*)
@@ -66,7 +73,8 @@
 
 (defun remove-running-job (job)
   (with-mutex (*job-running-mutex*)
-    (setf *job-running* (remove job *job-running*))))
+    (setf *job-running* (remove job *job-running*))
+    (push job *job-finished*)))
 
 (defun run-jobs ()
   (with-mutex (*job-queue-mutex*)
