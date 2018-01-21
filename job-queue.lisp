@@ -7,6 +7,8 @@
 
 (in-package :job-queue)
 
+(defvar *max-threads* 4)
+
 (defvar *job-runner-thread* nil)
 (defvar *job-runner-running* nil)
 (defvar *job-queue* nil)
@@ -33,6 +35,7 @@
 			    (let ((retval (funcall job-fn)))
 			      (setf (slot-value job 'job-retval) retval)
 			      (remove-running-job job)
+			      (schedule-jobs)
 			      (format t "job finish: ~a - retval = ~a~%"
 				      job
 				      (slot-value job 'job-retval))
@@ -73,8 +76,16 @@
 
 (defun remove-running-job (job)
   (with-mutex (*job-running-mutex*)
-    (setf *job-running* (remove job *job-running*))
-    (push job *job-finished*)))
+    (setf *job-running* (remove job *job-running*))))
+
+(defun schedule-jobs ()
+  (let ((empty-threads (- *max-threads* (nb-jobs-running))))
+    (loop
+       for i from 1 to empty-threads do
+	 (let ((job (pop *job-queue*)))
+	   (if job (progn (start-job job)
+			  (format t "running job: ~a~%" job)))))))
+
 
 (defun run-jobs ()
   (with-mutex (*job-queue-mutex*)
@@ -83,9 +94,11 @@
     (loop
        (unless *job-runner-running* (return))
        (condition-wait *job-queue-wait* *job-queue-mutex*)
-       (let ((job (pop *job-queue*)))
-	 (format t "running job: ~a~%" job)
-	 (if job (start-job job))))))
+       (schedule-jobs))))
+  
+(defun nb-jobs-running ()
+  (with-mutex (*job-running-mutex*)
+    (length *job-running*)))
 
 (defun notify-queue ()
   (with-mutex (*job-queue-mutex*)
